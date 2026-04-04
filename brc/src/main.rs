@@ -47,7 +47,7 @@ fn main() -> std::io::Result<()> {
     list.sort_by_key(|p| p.0);
     for (city, record) in list {
         println!(
-            "{city}: {min:.1}/{avg:.1}/{max:1}",
+            "{city}: {min:.1}/{avg:.1}/{max:.1}",
             min = record.min,
             avg = record.sum / record.count as f32,
             max = record.max
