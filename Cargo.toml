@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.102"
 liblzma = { version = "0.4.6", features = ["parallel", "static"] }
+xflags = "0.3.2"
