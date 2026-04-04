@@ -1,24 +1,26 @@
+use liblzma::read::XzDecoder;
+use liblzma::stream::MtStreamBuilder;
 use std::fs::File;
 use std::io;
 
-fn main() -> io::Result<()> {
-    let input_path = "measurements.txt.xz";
-    let output_path = "measurements.txt";
+fn main() -> anyhow::Result<()> {
+    const INPUT: &str = "measurements.txt.xz";
+    const OUTPUT: &str = "measurements.txt";
 
-    let num_workers = std::thread::available_parallelism()
-        .map(|n| n.get() as u32)
-        .unwrap_or(4)
-        .clamp(1, 256);
+    let thread_count = std::thread::available_parallelism()?.get() as u32;
+    let input = File::open(INPUT)?;
+    let mut output = File::create(OUTPUT)?;
 
-    let input = File::open(input_path)?;
-    let mut decoder = lzma_rust2::XzReaderMt::new(input, true, num_workers)?;
-    let mut output = File::create(output_path)?;
+    let stream = MtStreamBuilder::new()
+        .threads(thread_count)
+        .memlimit_stop(u64::MAX)
+        .memlimit_threading(u64::MAX)
+        .decoder()?;
 
+    let mut decoder = XzDecoder::new_stream(input, stream);
     io::copy(&mut decoder, &mut output)?;
 
-    println!(
-        "decompressed {} to {} (using {} workers)",
-        input_path, output_path, num_workers
-    );
+    println!("decompressed {INPUT} to {OUTPUT} with thread count {thread_count}");
+
     Ok(())
 }
