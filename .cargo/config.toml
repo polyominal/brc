@@ -1,3 +1,7 @@
 [alias]
-xtask = "run --bin xtask --"
-x = "run --bin xtask --"
+xtask = "run --package xtask --"
+x = "run --package xtask --"
+
+[profile.profiling]
+inherits = "release"
+debug = true

@@ -18,6 +18,7 @@ fn main() -> anyhow::Result<()> {
         XtaskCmd::Fmt(_) => fmt(sh),
         XtaskCmd::Smoke(_) => smoke(sh),
         XtaskCmd::Verify(_) => verify(sh),
+        XtaskCmd::Profile(_) => profile(sh),
     }
 }
 
@@ -46,23 +47,23 @@ fn decompress(sh: &Shell) -> anyhow::Result<()> {
 }
 
 fn install_tools(sh: &Shell) -> anyhow::Result<()> {
-    Ok(cmd!(sh, "cargo install flamegraph").run()?)
+    cmd!(sh, "cargo install --locked samply").run()?;
+
+    Ok(())
 }
 
-fn build(sh: &Shell) -> anyhow::Result<()> {
+fn build(sh: &Shell, profile: &str) -> anyhow::Result<()> {
     decompress(sh)?;
-
-    cmd!(sh, "cargo build --bin brc --release")
+    cmd!(sh, "cargo build --profile {profile} --bin brc")
         .run()
         .context("build brc binary")?;
-
     Ok(())
 }
 
 fn bench(sh: &Shell) -> anyhow::Result<()> {
     const ITERATIONS: usize = 10;
 
-    build(sh)?;
+    build(sh, "release")?;
 
     let mut times = Vec::with_capacity(ITERATIONS);
 
@@ -101,7 +102,7 @@ fn smoke(sh: &Shell) -> anyhow::Result<()> {
 fn verify(sh: &Shell) -> anyhow::Result<()> {
     const REFERENCE: &str = "reference_answer.txt";
 
-    build(sh)?;
+    build(sh, "release")?;
 
     let output = cmd!(sh, "./target/release/brc")
         .read()
@@ -119,6 +120,21 @@ fn verify(sh: &Shell) -> anyhow::Result<()> {
     }
 }
 
+fn profile(sh: &Shell) -> anyhow::Result<()> {
+    install_tools(sh)?;
+    build(sh, "profiling")?;
+
+    sh.create_dir("tmp/")?;
+    cmd!(
+        sh,
+        "samply record --port 2333 --output tmp/profile.json.gz ./target/profiling/brc"
+    )
+    .run()
+    .context("run samply record")?;
+
+    Ok(())
+}
+
 mod flags {
     xflags::xflags! {
         cmd xtask {
@@ -134,6 +150,8 @@ mod flags {
             cmd smoke {}
             /// Verify brc output matches the reference answer
             cmd verify {}
+            /// Profile `brc` using samply (opens Firefox Profiler)
+            cmd profile {}
         }
     }
 }
