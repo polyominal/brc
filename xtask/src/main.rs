@@ -93,8 +93,8 @@ fn fmt(sh: &Shell) -> anyhow::Result<()> {
 }
 
 fn smoke(sh: &Shell) -> anyhow::Result<()> {
-    cmd!(sh, "cargo fmt --check").run()?;
-    cmd!(sh, "cargo clippy --all-targets").run()?;
+    cmd!(sh, "cargo fmt -- --check").run()?;
+    cmd!(sh, "cargo clippy --all-targets -- --deny warnings").run()?;
 
     Ok(())
 }
