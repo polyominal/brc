@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io;
 use std::time::Instant;
 
+use anyhow::Context;
 use liblzma::read::XzDecoder;
 use liblzma::stream::MtStreamBuilder;
 use xshell::{Shell, cmd};
@@ -34,7 +35,8 @@ fn decompress() -> anyhow::Result<()> {
         .decoder()?;
 
     let mut decoder = XzDecoder::new_stream(input, stream);
-    io::copy(&mut decoder, &mut output)?;
+    io::copy(&mut decoder, &mut output)
+        .context("copy decoded bytes to output file")?;
 
     println!("decompressed {INPUT} to {OUTPUT} with thread count {thread_count}");
 
@@ -59,7 +61,8 @@ fn bench(sh: &Shell) -> anyhow::Result<()> {
         cmd!(sh, "./target/release/brc")
             .ignore_stderr()
             .ignore_stdout()
-            .run()?;
+            .run()
+            .context("run brc binary")?;
         let elapsed = start.elapsed();
         times.push(elapsed);
 

@@ -24,7 +24,7 @@ impl Default for Record {
             count: 0,
             min: TEMPERATURE_RANGE_ABS,
             sum: 0.,
-            max: TEMPERATURE_RANGE_ABS,
+            max: -TEMPERATURE_RANGE_ABS,
         }
     }
 }
