@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io;
 use std::time::Instant;
 
+use anyhow::Context;
 use liblzma::read::XzDecoder;
 use liblzma::stream::MtStreamBuilder;
 use xshell::{Shell, cmd};
@@ -11,15 +12,18 @@ fn main() -> anyhow::Result<()> {
     let flags = flags::Xtask::from_env()?;
     let sh = &Shell::new()?;
     match flags.subcommand {
-        XtaskCmd::Decompress(_) => decompress(),
+        XtaskCmd::Decompress(_) => decompress(sh),
         XtaskCmd::InstallTools(_) => install_tools(sh),
         XtaskCmd::Bench(_) => bench(sh),
         XtaskCmd::Fmt(_) => fmt(sh),
         XtaskCmd::Smoke(_) => smoke(sh),
+        XtaskCmd::Verify(_) => verify(sh),
     }
 }
 
-fn decompress() -> anyhow::Result<()> {
+fn decompress(sh: &Shell) -> anyhow::Result<()> {
+    cmd!(sh, "git lfs pull").run()?;
+
     const INPUT: &str = "measurements.txt.xz";
     const OUTPUT: &str = "measurements.txt";
 
@@ -34,15 +38,23 @@ fn decompress() -> anyhow::Result<()> {
         .decoder()?;
 
     let mut decoder = XzDecoder::new_stream(input, stream);
-    io::copy(&mut decoder, &mut output)?;
+    io::copy(&mut decoder, &mut output).context("copy decoded bytes to output file")?;
 
-    println!("decompressed {INPUT} to {OUTPUT} with thread count {thread_count}");
+    eprintln!("decompressed {INPUT} to {OUTPUT} with thread count {thread_count}");
 
     Ok(())
 }
 
 fn install_tools(sh: &Shell) -> anyhow::Result<()> {
-    cmd!(sh, "cargo install flamegraph").run()?;
+    Ok(cmd!(sh, "cargo install flamegraph").run()?)
+}
+
+fn build(sh: &Shell) -> anyhow::Result<()> {
+    decompress(sh)?;
+
+    cmd!(sh, "cargo build --bin brc --release")
+        .run()
+        .context("build brc binary")?;
 
     Ok(())
 }
@@ -50,7 +62,7 @@ fn install_tools(sh: &Shell) -> anyhow::Result<()> {
 fn bench(sh: &Shell) -> anyhow::Result<()> {
     const ITERATIONS: usize = 10;
 
-    cmd!(sh, "cargo build --bin brc --release").run()?;
+    build(sh)?;
 
     let mut times = Vec::with_capacity(ITERATIONS);
 
@@ -59,7 +71,8 @@ fn bench(sh: &Shell) -> anyhow::Result<()> {
         cmd!(sh, "./target/release/brc")
             .ignore_stderr()
             .ignore_stdout()
-            .run()?;
+            .run()
+            .context("run brc binary")?;
         let elapsed = start.elapsed();
         times.push(elapsed);
 
@@ -67,7 +80,7 @@ fn bench(sh: &Shell) -> anyhow::Result<()> {
     }
 
     times.sort();
-    println!("p50: {p50:?}", p50 = times[times.len() / 2]);
+    eprintln!("p50: {p50:?}", p50 = times[times.len() / 2]);
 
     Ok(())
 }
@@ -85,6 +98,27 @@ fn smoke(sh: &Shell) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn verify(sh: &Shell) -> anyhow::Result<()> {
+    const REFERENCE: &str = "reference_answer.txt";
+
+    build(sh)?;
+
+    let output = cmd!(sh, "./target/release/brc")
+        .read()
+        .context("run brc binary")?;
+
+    let reference =
+        std::fs::read_to_string(REFERENCE).with_context(|| format!("read {REFERENCE}"))?;
+
+    if output == reference.trim_end() {
+        eprintln!("output matches {REFERENCE}");
+        Ok(())
+    } else {
+        eprintln!("output differs from {REFERENCE}");
+        anyhow::bail!("verification failed");
+    }
+}
+
 mod flags {
     xflags::xflags! {
         cmd xtask {
@@ -98,6 +132,8 @@ mod flags {
             cmd fmt {}
             /// Run smoke tests (fmt check + clippy)
             cmd smoke {}
+            /// Verify brc output matches the reference answer
+            cmd verify {}
         }
     }
 }
