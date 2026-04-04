@@ -4,6 +4,8 @@ use std::io;
 use liblzma::read::XzDecoder;
 use liblzma::stream::MtStreamBuilder;
 
+use xshell::{Shell, cmd};
+
 mod flags {
     xflags::xflags! {
         src "./src/bin/xtask.rs"
@@ -11,6 +13,8 @@ mod flags {
         cmd xtask {
             /// Decompress `measurements.txt.xz`
             cmd decompress {}
+            /// Install tools required for the challenge
+            cmd install-tools {}
         }
     }
     // generated start
@@ -24,10 +28,14 @@ mod flags {
     #[derive(Debug)]
     pub enum XtaskCmd {
         Decompress(Decompress),
+        InstallTools(InstallTools),
     }
 
     #[derive(Debug)]
     pub struct Decompress;
+
+    #[derive(Debug)]
+    pub struct InstallTools;
 
     impl Xtask {
         #[allow(dead_code)]
@@ -49,9 +57,12 @@ mod flags {
 }
 
 fn main() -> anyhow::Result<()> {
+    use flags::XtaskCmd;
     let flags = flags::Xtask::from_env()?;
+    let sh = &Shell::new()?;
     match flags.subcommand {
-        flags::XtaskCmd::Decompress(_) => decompress(),
+        XtaskCmd::Decompress(_) => decompress(),
+        XtaskCmd::InstallTools(_) => install_tools(sh),
     }
 }
 
@@ -73,6 +84,12 @@ fn decompress() -> anyhow::Result<()> {
     io::copy(&mut decoder, &mut output)?;
 
     println!("decompressed {INPUT} to {OUTPUT} with thread count {thread_count}");
+
+    Ok(())
+}
+
+fn install_tools(sh: &Shell) -> anyhow::Result<()> {
+    cmd!(sh, "cargo install flamegraph").run()?;
 
     Ok(())
 }
