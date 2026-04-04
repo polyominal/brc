@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io;
+use std::time::Instant;
 
 use liblzma::read::XzDecoder;
 use liblzma::stream::MtStreamBuilder;
@@ -15,6 +16,8 @@ mod flags {
             cmd decompress {}
             /// Install tools required for the challenge
             cmd install-tools {}
+            /// Benchmark `brc` and report p50 time
+            cmd bench {}
         }
     }
     // generated start
@@ -29,6 +32,7 @@ mod flags {
     pub enum XtaskCmd {
         Decompress(Decompress),
         InstallTools(InstallTools),
+        Bench(Bench),
     }
 
     #[derive(Debug)]
@@ -36,6 +40,9 @@ mod flags {
 
     #[derive(Debug)]
     pub struct InstallTools;
+
+    #[derive(Debug)]
+    pub struct Bench;
 
     impl Xtask {
         #[allow(dead_code)]
@@ -63,6 +70,7 @@ fn main() -> anyhow::Result<()> {
     match flags.subcommand {
         XtaskCmd::Decompress(_) => decompress(),
         XtaskCmd::InstallTools(_) => install_tools(sh),
+        XtaskCmd::Bench(_) => bench(sh),
     }
 }
 
@@ -90,6 +98,31 @@ fn decompress() -> anyhow::Result<()> {
 
 fn install_tools(sh: &Shell) -> anyhow::Result<()> {
     cmd!(sh, "cargo install flamegraph").run()?;
+
+    Ok(())
+}
+
+fn bench(sh: &Shell) -> anyhow::Result<()> {
+    const ITERATIONS: usize = 10;
+
+    cmd!(sh, "cargo build --bin brc --release").run()?;
+
+    let mut times = Vec::with_capacity(ITERATIONS);
+
+    for i in 0..ITERATIONS {
+        let start = Instant::now();
+        cmd!(sh, "./target/release/brc")
+            .ignore_stderr()
+            .ignore_stdout()
+            .run()?;
+        let elapsed = start.elapsed();
+        times.push(elapsed);
+
+        eprintln!("run #{i}: {elapsed:?}");
+    }
+
+    times.sort();
+    println!("p50: {p50:?}", p50 = times[times.len() / 2]);
 
     Ok(())
 }
