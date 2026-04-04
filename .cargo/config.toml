@@ -1,0 +1,3 @@
+[alias]
+xtask = "run --bin xtask --"
+x = "run --bin xtask --"
