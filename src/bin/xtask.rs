@@ -17,6 +17,7 @@ fn main() -> anyhow::Result<()> {
         XtaskCmd::Bench(_) => bench(sh),
         XtaskCmd::Fmt(_) => fmt(sh),
         XtaskCmd::Smoke(_) => smoke(sh),
+        XtaskCmd::Verify(_) => verify(sh),
     }
 }
 
@@ -35,8 +36,7 @@ fn decompress() -> anyhow::Result<()> {
         .decoder()?;
 
     let mut decoder = XzDecoder::new_stream(input, stream);
-    io::copy(&mut decoder, &mut output)
-        .context("copy decoded bytes to output file")?;
+    io::copy(&mut decoder, &mut output).context("copy decoded bytes to output file")?;
 
     println!("decompressed {INPUT} to {OUTPUT} with thread count {thread_count}");
 
@@ -88,6 +88,29 @@ fn smoke(sh: &Shell) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn verify(sh: &Shell) -> anyhow::Result<()> {
+    const REFERENCE: &str = "reference_answer.txt";
+
+    cmd!(sh, "cargo build --bin brc --release")
+        .run()
+        .context("build brc binary")?;
+
+    let output = cmd!(sh, "./target/release/brc")
+        .read()
+        .context("run brc binary")?;
+
+    let reference =
+        std::fs::read_to_string(REFERENCE).with_context(|| format!("read {REFERENCE}"))?;
+
+    if output == reference.trim_end() {
+        println!("output matches {REFERENCE}");
+        Ok(())
+    } else {
+        eprintln!("output differs from {REFERENCE}");
+        anyhow::bail!("verification failed");
+    }
+}
+
 mod flags {
     xflags::xflags! {
         cmd xtask {
@@ -101,6 +124,8 @@ mod flags {
             cmd fmt {}
             /// Run smoke tests (fmt check + clippy)
             cmd smoke {}
+            /// Verify brc output matches the reference answer
+            cmd verify {}
         }
     }
 }
