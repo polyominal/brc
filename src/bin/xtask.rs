@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use liblzma::read::XzDecoder;
 use liblzma::stream::MtStreamBuilder;
-
 use xshell::{Shell, cmd};
 
 fn main() -> anyhow::Result<()> {
@@ -15,6 +14,8 @@ fn main() -> anyhow::Result<()> {
         XtaskCmd::Decompress(_) => decompress(),
         XtaskCmd::InstallTools(_) => install_tools(sh),
         XtaskCmd::Bench(_) => bench(sh),
+        XtaskCmd::Fmt(_) => fmt(sh),
+        XtaskCmd::Smoke(_) => smoke(sh),
     }
 }
 
@@ -71,6 +72,19 @@ fn bench(sh: &Shell) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn fmt(sh: &Shell) -> anyhow::Result<()> {
+    cmd!(sh, "cargo fmt").run()?;
+
+    Ok(())
+}
+
+fn smoke(sh: &Shell) -> anyhow::Result<()> {
+    cmd!(sh, "cargo fmt --check").run()?;
+    cmd!(sh, "cargo clippy --all-targets").run()?;
+
+    Ok(())
+}
+
 mod flags {
     xflags::xflags! {
         cmd xtask {
@@ -80,6 +94,10 @@ mod flags {
             cmd install-tools {}
             /// Benchmark `brc` and report p50 time
             cmd bench {}
+            /// Format the codebase
+            cmd fmt {}
+            /// Run smoke tests (fmt check + clippy)
+            cmd smoke {}
         }
     }
 }
