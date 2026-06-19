@@ -81,7 +81,12 @@ fn bench(sh: &Shell) -> anyhow::Result<()> {
     }
 
     times.sort();
-    eprintln!("p50: {p50:?}", p50 = times[times.len() / 2]);
+    eprintln!(
+        "min/p50/max: {min:?}/{p50:?}/{max:?}",
+        min = times.first().unwrap(),
+        max = times.last().unwrap(),
+        p50 = times[times.len() / 2],
+    );
 
     Ok(())
 }
@@ -142,7 +147,7 @@ mod flags {
             cmd decompress {}
             /// Install tools required for the challenge
             cmd install-tools {}
-            /// Benchmark `brc` and report p50 time
+            /// Benchmark `brc` and report min, max, and p50 times
             cmd bench {}
             /// Format the codebase
             cmd fmt {}
