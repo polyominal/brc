@@ -139,6 +139,13 @@ fn profile(sh: &Shell) -> anyhow::Result<()> {
     install_tools(sh)?;
     build(sh, "profiling")?;
 
+    eprintln!("warming up target/profiling/brc before profiling");
+    cmd!(sh, "./target/profiling/brc")
+        .ignore_stdout()
+        .ignore_stderr()
+        .run()
+        .context("warm up brc binary")?;
+
     sh.create_dir("tmp/")?;
     let id = cmd!(sh, "git rev-parse --short=8 HEAD")
         .read()
