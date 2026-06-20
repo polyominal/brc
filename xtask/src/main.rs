@@ -130,9 +130,12 @@ fn profile(sh: &Shell) -> anyhow::Result<()> {
     build(sh, "profiling")?;
 
     sh.create_dir("tmp/")?;
+    let id = cmd!(sh, "git rev-parse --short=8 HEAD")
+        .read()
+        .context("get commit ID")?;
     cmd!(
         sh,
-        "samply record --port 2333 --output tmp/profile.json.gz ./target/profiling/brc"
+        "samply record --port 2333 --no-open --output tmp/{id}.profile.json.gz ./target/profiling/brc"
     )
     .ignore_stdout()
     .run()
