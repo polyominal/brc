@@ -23,15 +23,25 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn decompress(sh: &Shell) -> anyhow::Result<()> {
-    cmd!(sh, "git lfs pull").run()?;
-
     const INPUT: &str = "measurements.txt.xz";
     const OUTPUT: &str = "measurements.txt";
+    if sh.path_exists(OUTPUT) {
+        eprintln!("{OUTPUT} already exists. re-decompress? [y/N] ");
+        let mut answer = String::new();
+        std::io::stdin()
+            .read_line(&mut answer)
+            .context("read user input")?;
+        if answer.trim().to_lowercase() != "y" {
+            eprintln!("skipping decompression");
+            return Ok(());
+        }
+    }
+
+    cmd!(sh, "git lfs pull").run()?;
 
     let thread_count = std::thread::available_parallelism()?.get() as u32;
     let input = File::open(INPUT)?;
     let mut output = File::create(OUTPUT)?;
-
     let stream = MtStreamBuilder::new()
         .threads(thread_count)
         .memlimit_stop(u64::MAX)
