@@ -1,20 +1,41 @@
 use memchr::memchr;
 
-const TEMPERATURE_RANGE_ABS: f32 = 100.;
+type Value = i32;
+type Sum = i64;
+
+const TEMPERATURE_RANGE_ABS: Value = 1000;
+
+fn slice_to_value(mut s: &[u8]) -> Value {
+    let is_negative = if unsafe { *s.get_unchecked(0) } == b'-' {
+        s = unsafe { s.get_unchecked(1..) };
+        true
+    } else {
+        false
+    };
+
+    let value: Value = match s {
+        [a, b, b'.', c] => {
+            100 * ((*a - b'0') as Value) + 10 * ((*b - b'0') as Value) + ((*c - b'0') as Value)
+        }
+        [a, b'.', b] => 10 * ((*a - b'0') as Value) + ((*b - b'0') as Value),
+        _ => panic!("unrecognized value: {s:?}"),
+    };
+    if !is_negative { value } else { -value }
+}
 
 struct Record {
     count: u32,
-    min: f32,
-    sum: f32,
-    max: f32,
+    min: Value,
+    sum: Sum,
+    max: Value,
 }
 
 impl Record {
-    fn add(&mut self, temperature: f32) {
+    fn add(&mut self, value: Value) {
         self.count += 1;
-        self.min = self.min.min(temperature);
-        self.sum += temperature;
-        self.max = self.max.max(temperature);
+        self.min = self.min.min(value);
+        self.sum += value as Sum;
+        self.max = self.max.max(value);
     }
 }
 
@@ -23,7 +44,7 @@ impl Default for Record {
         Self {
             count: 0,
             min: TEMPERATURE_RANGE_ABS,
-            sum: 0.,
+            sum: 0,
             max: -TEMPERATURE_RANGE_ABS,
         }
     }
@@ -42,9 +63,7 @@ fn main() -> std::io::Result<()> {
                 data.get_unchecked(sep + 1..sep + 1 + value_len),
             )
         };
-        let value = unsafe { str::from_utf8_unchecked(value) }
-            .parse::<f32>()
-            .unwrap();
+        let value = slice_to_value(value);
         map.entry(key).or_default().add(value);
         data = unsafe { data.get_unchecked(sep + 1 + value_len + 1..) };
     }
@@ -55,9 +74,9 @@ fn main() -> std::io::Result<()> {
         println!(
             "{key}: {min:.1}/{avg:.1}/{max:.1}",
             key = unsafe { str::from_utf8_unchecked(key) },
-            min = value.min,
-            avg = value.sum / value.count as f32,
-            max = value.max
+            min = value.min as f32 / 10_f32,
+            avg = (value.sum as f32 / value.count as f32) / 10_f32,
+            max = value.max as f32 / 10_f32
         );
     }
 
