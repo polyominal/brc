@@ -1,5 +1,3 @@
-use std::io::Read;
-
 const TEMPERATURE_RANGE_ABS: f32 = 100.;
 
 struct Record {
@@ -30,27 +28,37 @@ impl Default for Record {
 }
 
 fn main() -> std::io::Result<()> {
-    let mut data = String::new();
-    {
-        let mut file = std::fs::File::open("measurements.txt")?;
-        file.read_to_string(&mut data)?;
-    }
+    let data = std::fs::read("measurements.txt")?;
+    let mut data = data.as_slice();
 
-    let mut map = std::collections::HashMap::<_, Record>::new();
-    for line in data.trim().split("\n") {
-        let (city, temperature) = line.split_once(';').unwrap();
-        let value = temperature.parse::<f32>().unwrap();
-        map.entry(city).or_default().add(value);
+    let mut map = std::collections::HashMap::<&[u8], Record>::new();
+    while let Some(sep) = data.iter().position(|&c| c == b';') {
+        let value_len = unsafe { data.get_unchecked(sep + 1..) }
+            .iter()
+            .position(|&c| c == b'\n')
+            .unwrap();
+        let (key, value) = unsafe {
+            (
+                data.get_unchecked(..sep),
+                data.get_unchecked(sep + 1..sep + 1 + value_len),
+            )
+        };
+        let value = unsafe { str::from_utf8_unchecked(value) }
+            .parse::<f32>()
+            .unwrap();
+        map.entry(key).or_default().add(value);
+        data = unsafe { data.get_unchecked(sep + 1 + value_len + 1..) };
     }
 
     let mut list: Vec<_> = map.into_iter().collect();
     list.sort_by_key(|p| p.0);
-    for (city, record) in list {
+    for (key, value) in list {
         println!(
-            "{city}: {min:.1}/{avg:.1}/{max:.1}",
-            min = record.min,
-            avg = record.sum / record.count as f32,
-            max = record.max
+            "{key}: {min:.1}/{avg:.1}/{max:.1}",
+            key = unsafe { str::from_utf8_unchecked(key) },
+            min = value.min,
+            avg = value.sum / value.count as f32,
+            max = value.max
         );
     }
 
