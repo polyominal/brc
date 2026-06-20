@@ -4,3 +4,4 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+memchr = "2.8.2"
