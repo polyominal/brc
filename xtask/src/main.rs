@@ -134,6 +134,7 @@ fn profile(sh: &Shell) -> anyhow::Result<()> {
         sh,
         "samply record --port 2333 --output tmp/profile.json.gz ./target/profiling/brc"
     )
+    .ignore_stdout()
     .run()
     .context("run samply record")?;
 
