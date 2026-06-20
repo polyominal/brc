@@ -1,3 +1,5 @@
+use memchr::memchr;
+
 const TEMPERATURE_RANGE_ABS: f32 = 100.;
 
 struct Record {
@@ -32,11 +34,8 @@ fn main() -> std::io::Result<()> {
     let mut data = data.as_slice();
 
     let mut map = std::collections::HashMap::<&[u8], Record>::new();
-    while let Some(sep) = data.iter().position(|&c| c == b';') {
-        let value_len = unsafe { data.get_unchecked(sep + 1..) }
-            .iter()
-            .position(|&c| c == b'\n')
-            .unwrap();
+    while let Some(sep) = memchr(b';', data) {
+        let value_len = memchr(b'\n', unsafe { data.get_unchecked(sep + 1..) }).unwrap();
         let (key, value) = unsafe {
             (
                 data.get_unchecked(..sep),
