@@ -13,13 +13,17 @@ fn slice_to_value(mut s: &[u8]) -> Value {
         false
     };
 
-    let value: Value = match s {
-        [a, b, b'.', c] => {
-            100 * ((*a - b'0') as Value) + 10 * ((*b - b'0') as Value) + ((*c - b'0') as Value)
-        }
-        [a, b'.', b] => 10 * ((*a - b'0') as Value) + ((*b - b'0') as Value),
-        _ => panic!("unrecognized value: {s:?}"),
+    let len = s.len();
+
+    let (a, b, c) = unsafe {
+        (
+            *s.get_unchecked(len - 4) - b'0',
+            *s.get_unchecked(len - 3) - b'0',
+            *s.get_unchecked(len - 1) - b'0',
+        )
     };
+    let value = if len == 4 { 100 * (a as Value) } else { 0 } + 10 * (b as Value) + (c as Value);
+
     if !is_negative { value } else { -value }
 }
 
