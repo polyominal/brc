@@ -65,7 +65,7 @@ fn main() -> std::io::Result<()> {
     let data = std::fs::read("measurements.txt")?;
     let mut data = data.as_slice();
 
-    let mut map = std::collections::HashMap::<Key, Record>::new();
+    let mut map = rustc_hash::FxHashMap::<Key, Record>::default();
     while let Some(sep) = memchr(b';', data) {
         let value_len = memchr(b'\n', unsafe { data.get_unchecked(sep + 1..) }).unwrap();
         let (key, value) = unsafe {
