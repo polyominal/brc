@@ -5,3 +5,4 @@ version.workspace = true
 
 [dependencies]
 memchr = "2.8.2"
+rustc-hash = "2.1.2"
