@@ -1,3 +1,8 @@
+#![feature(portable_simd)]
+
+use std::simd::Simd;
+use std::simd::cmp::SimdOrd;
+
 use memchr::memchr;
 
 type Key = u64;
@@ -76,36 +81,30 @@ impl<'a> From<&Record<'a>> for DisplayedRecord<'a> {
     fn from(r: &Record<'a>) -> Self {
         Self {
             key: unsafe { str::from_utf8_unchecked(r.key) },
-            min: r.min as f32 / 10_f32,
-            avg: (r.sum as f32 / r.count as f32) / 10_f32,
-            max: r.max as f32 / 10_f32,
+            min: r.min_max[0] as f32 / 10_f32,
+            avg: (r.count_sum[1] as f32 / r.count_sum[0] as f32) / 10_f32,
+            max: -r.min_max[1] as f32 / 10_f32,
         }
     }
 }
 
 struct Record<'a> {
     key: &'a [u8],
-    count: u32,
-    min: Value,
-    sum: Value,
-    max: Value,
+    count_sum: Simd<i32, 2>,
+    min_max: Simd<i32, 2>,
 }
 
 impl<'a> Record<'a> {
     fn add(&mut self, value: Value) {
-        self.count += 1;
-        self.min = self.min.min(value);
-        self.sum += value;
-        self.max = self.max.max(value);
+        self.count_sum += Simd::from_array([1, value]);
+        self.min_max = self.min_max.simd_min(Simd::from_array([value, -value]));
     }
 
     fn new(key: &'a [u8], value: Value) -> Self {
         Self {
             key,
-            count: 1,
-            min: value,
-            sum: value,
-            max: value,
+            count_sum: Simd::from_array([1, value]),
+            min_max: Simd::from_array([value, -value]),
         }
     }
 }
