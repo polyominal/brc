@@ -1,10 +1,6 @@
-use std::fs::File;
-use std::io;
-use std::time::Instant;
+use std::{io, time};
 
 use anyhow::Context;
-use liblzma::read::XzDecoder;
-use liblzma::stream::MtStreamBuilder;
 use xshell::{Shell, cmd};
 
 fn main() -> anyhow::Result<()> {
@@ -12,7 +8,7 @@ fn main() -> anyhow::Result<()> {
     let flags = flags::Xtask::from_env()?;
     let sh = &Shell::new()?;
     match flags.subcommand {
-        XtaskCmd::Decompress(_) => decompress(sh),
+        XtaskCmd::Decompress(_) => decompress(sh, true),
         XtaskCmd::InstallTools(_) => install_tools(sh),
         XtaskCmd::Bench(_) => bench(sh),
         XtaskCmd::Fmt(_) => fmt(sh),
@@ -22,36 +18,60 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn decompress(sh: &Shell) -> anyhow::Result<()> {
+fn decompress(sh: &Shell, force: bool) -> anyhow::Result<()> {
     const INPUT: &str = "measurements.txt.xz";
     const OUTPUT: &str = "measurements.txt";
-    if sh.path_exists(OUTPUT) {
-        eprintln!("{OUTPUT} already exists. re-decompress? [y/N] ");
-        let mut answer = String::new();
-        std::io::stdin()
-            .read_line(&mut answer)
-            .context("read user input")?;
-        if answer.trim().to_lowercase() != "y" {
-            eprintln!("skipping decompression");
-            return Ok(());
+    const EXPECTED_OUTPUT_SIZE: u64 = 1_379_536_818;
+
+    let check_output = || -> io::Result<bool> {
+        match std::fs::metadata(OUTPUT)? {
+            meta if meta.len() == EXPECTED_OUTPUT_SIZE => Ok(true),
+            _ => {
+                eprintln!("{OUTPUT} exists with unexpected size");
+                Ok(false)
+            }
+        }
+    };
+
+    if !force {
+        match check_output() {
+            Ok(true) => {
+                eprintln!("{OUTPUT} already exists with expected size, skipping decompression");
+                return Ok(());
+            }
+            Err(e) if e.kind() != io::ErrorKind::NotFound => {
+                return Err(e).context("check output file metadata");
+            }
+            _ => {
+                // need to decompress
+            }
         }
     }
 
-    cmd!(sh, "git lfs pull").run()?;
+    eprintln!("starting fetching and decompressing");
 
-    let thread_count = std::thread::available_parallelism()?.get() as u32;
-    let input = File::open(INPUT)?;
-    let mut output = File::create(OUTPUT)?;
-    let stream = MtStreamBuilder::new()
-        .threads(thread_count)
-        .memlimit_stop(u64::MAX)
-        .memlimit_threading(u64::MAX)
-        .decoder()?;
+    {
+        let start = time::Instant::now();
+        cmd!(sh, "git lfs pull").run()?;
+        eprintln!(
+            "fetched {INPUT}. took {elapsed:?}",
+            elapsed = start.elapsed()
+        );
+    }
 
-    let mut decoder = XzDecoder::new_stream(input, stream);
-    io::copy(&mut decoder, &mut output).context("copy decoded bytes to output file")?;
+    {
+        let start = time::Instant::now();
 
-    eprintln!("decompressed {INPUT} to {OUTPUT} with thread count {thread_count}");
+        cmd!(sh, "xz --decompress --force --keep {INPUT}").run()?;
+        if !matches!(check_output(), Ok(true)) {
+            anyhow::bail!("something wrong happened with input file decompression");
+        }
+
+        eprintln!(
+            "fetched and decompressed {INPUT} to {OUTPUT}. took {elapsed:?}",
+            elapsed = start.elapsed()
+        );
+    }
 
     Ok(())
 }
@@ -63,7 +83,7 @@ fn install_tools(sh: &Shell) -> anyhow::Result<()> {
 }
 
 fn build(sh: &Shell, profile: &str) -> anyhow::Result<()> {
-    decompress(sh)?;
+    decompress(sh, false)?;
     cmd!(sh, "cargo build --profile {profile} --bin brc")
         .run()
         .context("build brc binary")?;
@@ -78,7 +98,7 @@ fn bench(sh: &Shell) -> anyhow::Result<()> {
     let mut times = Vec::with_capacity(ITERATIONS);
 
     for i in 0..ITERATIONS {
-        let start = Instant::now();
+        let start = time::Instant::now();
         cmd!(sh, "./target/release/brc")
             .ignore_stderr()
             .ignore_stdout()
