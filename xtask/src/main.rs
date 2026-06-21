@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::{io, time};
 
 use anyhow::Context;
@@ -82,24 +83,25 @@ fn install_tools(sh: &Shell) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build(sh: &Shell, profile: &str) -> anyhow::Result<()> {
+fn build(sh: &Shell, profile: &str) -> anyhow::Result<PathBuf> {
     decompress(sh, false)?;
     cmd!(sh, "cargo build --profile {profile} --bin brc")
         .run()
         .context("build brc binary")?;
-    Ok(())
+
+    Ok(PathBuf::from("target").join(profile).join("brc"))
 }
 
 fn bench(sh: &Shell) -> anyhow::Result<()> {
     const ITERATIONS: usize = 10;
 
-    build(sh, "release")?;
+    let bin = build(sh, "release")?;
 
     let mut times = Vec::with_capacity(ITERATIONS);
 
     for i in 0..ITERATIONS {
         let start = time::Instant::now();
-        cmd!(sh, "./target/release/brc")
+        cmd!(sh, "{bin}")
             .ignore_stderr()
             .ignore_stdout()
             .run()
@@ -137,15 +139,10 @@ fn smoke(sh: &Shell) -> anyhow::Result<()> {
 fn verify(sh: &Shell) -> anyhow::Result<()> {
     const REFERENCE: &str = "reference_answer.txt";
 
-    build(sh, "release")?;
-
-    let output = cmd!(sh, "./target/release/brc")
-        .read()
-        .context("run brc binary")?;
-
+    let bin = build(sh, "release")?;
+    let output = cmd!(sh, "{bin}").read().context("run brc binary")?;
     let reference =
         std::fs::read_to_string(REFERENCE).with_context(|| format!("read {REFERENCE}"))?;
-
     if output == reference.trim_end() {
         eprintln!("output matches {REFERENCE}");
         Ok(())
@@ -157,10 +154,10 @@ fn verify(sh: &Shell) -> anyhow::Result<()> {
 
 fn profile(sh: &Shell) -> anyhow::Result<()> {
     install_tools(sh)?;
-    build(sh, "profiling")?;
+    let bin = build(sh, "profiling")?;
 
-    eprintln!("warming up target/profiling/brc before profiling");
-    cmd!(sh, "./target/profiling/brc")
+    eprintln!("warming up {bin} before profiling", bin = bin.display());
+    cmd!(sh, "{bin}")
         .ignore_stdout()
         .ignore_stderr()
         .run()
@@ -172,7 +169,7 @@ fn profile(sh: &Shell) -> anyhow::Result<()> {
         .context("get commit ID")?;
     cmd!(
         sh,
-        "samply record --port 2333 --no-open --output tmp/{id}.profile.json.gz ./target/profiling/brc"
+        "samply record --port 2333 --no-open --output tmp/{id}.profile.json.gz {bin}"
     )
     .ignore_stdout()
     .run()
