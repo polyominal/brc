@@ -5,25 +5,20 @@ type Key = u64;
 type Value = i32;
 type Sum = i64;
 
-fn slice_to_value(mut s: &[u8]) -> Value {
-    let is_negative = if unsafe { *s.get_unchecked(0) } == b'-' {
-        s = unsafe { s.get_unchecked(1..) };
-        true
-    } else {
-        false
-    };
-
+fn slice_to_value(s: &[u8]) -> Value {
+    let is_negative = unsafe { *s.get_unchecked(0) == b'-' };
+    let s = unsafe { s.get_unchecked(is_negative as usize..) };
     let len = s.len();
 
-    let (a, b, c) = unsafe {
+    let (first, ones, tenths) = unsafe {
         (
-            *s.get_unchecked(len - 4) - b'0',
+            *s.get_unchecked(0) - b'0',
             *s.get_unchecked(len - 3) - b'0',
             *s.get_unchecked(len - 1) - b'0',
         )
     };
-    let value = if len == 4 { 100 * (a as Value) } else { 0 } + 10 * (b as Value) + (c as Value);
-
+    let value =
+        ((len == 4) as Value) * 100 * (first as Value) + 10 * (ones as Value) + (tenths as Value);
     if !is_negative { value } else { -value }
 }
 
