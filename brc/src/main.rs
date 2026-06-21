@@ -5,21 +5,25 @@ type Key = u64;
 type Value = i32;
 type Sum = i64;
 
-fn slice_to_value(s: &[u8]) -> Value {
+fn parse_value(s: &[u8]) -> (Value, &[u8]) {
     let is_negative = unsafe { *s.get_unchecked(0) == b'-' };
-    let s = unsafe { s.get_unchecked(is_negative as usize..) };
-    let len = s.len();
+    let offset = is_negative as usize;
+    let unsigned = unsafe { s.get_unchecked(offset..) };
+    let has_tens = unsafe { (*unsigned.get_unchecked(1) != b'.') as usize };
 
-    let (first, ones, tenths) = unsafe {
+    let (tens, ones, tenths) = unsafe {
         (
-            *s.get_unchecked(0) - b'0',
-            *s.get_unchecked(len - 3) - b'0',
-            *s.get_unchecked(len - 1) - b'0',
+            *unsigned.get_unchecked(0) - b'0',
+            *unsigned.get_unchecked(has_tens) - b'0',
+            *unsigned.get_unchecked(2 + has_tens) - b'0',
         )
     };
     let value =
-        ((len == 4) as Value) * 100 * (first as Value) + 10 * (ones as Value) + (tenths as Value);
-    if !is_negative { value } else { -value }
+        (has_tens as Value) * 100 * (tens as Value) + 10 * (ones as Value) + (tenths as Value);
+    let value = if !is_negative { value } else { -value };
+    let rest = unsafe { s.get_unchecked(offset + 4 + has_tens..) };
+
+    (value, rest)
 }
 
 struct Record<'a> {
@@ -66,18 +70,12 @@ fn main() -> std::io::Result<()> {
 
     let mut map = rustc_hash::FxHashMap::<Key, Record>::default();
     while let Some(sep) = memchr(b';', data) {
-        let value_len = memchr(b'\n', unsafe { data.get_unchecked(sep + 1..) }).unwrap();
-        let (key, value) = unsafe {
-            (
-                data.get_unchecked(..sep),
-                data.get_unchecked(sep + 1..sep + 1 + value_len),
-            )
-        };
-        let value = slice_to_value(value);
+        let key = unsafe { data.get_unchecked(..sep) };
+        let (value, rest) = parse_value(unsafe { data.get_unchecked(sep + 1..) });
         map.entry(slice_to_key(key))
             .and_modify(|r| r.add(value))
             .or_insert_with(|| Record::new(key, value));
-        data = unsafe { data.get_unchecked(sep + 1 + value_len + 1..) };
+        data = rest;
     }
 
     let mut list: Vec<_> = map.values().collect();
