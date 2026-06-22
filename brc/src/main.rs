@@ -1,5 +1,3 @@
-use memchr::memchr;
-
 type Key = u64;
 type Value = i32;
 
@@ -8,12 +6,12 @@ fn main() -> std::io::Result<()> {
     let mut data = data.as_slice();
 
     let mut map = rustc_hash::FxHashMap::<Key, Record>::default();
-    while let Some(sep) = memchr(b';', data) {
-        let key = unsafe { data.get_unchecked(..sep) };
-        let (value, rest) = parse_value(unsafe { data.get_unchecked(sep + 1..) });
-        map.entry(slice_to_key(key))
+    while !data.is_empty() {
+        let (key, key_bytes, after_key) = parse_key(data);
+        let (value, rest) = parse_value(after_key);
+        map.entry(key)
             .and_modify(|r| r.add(value))
-            .or_insert_with(|| Record::new(key, value));
+            .or_insert_with(|| Record::new(key_bytes, value));
         data = rest;
     }
 
@@ -33,15 +31,75 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-// I assure you that this gives zero collision...
-fn slice_to_key(s: &[u8]) -> u64 {
-    let leading_dirty = unsafe { s.as_ptr().cast::<u64>().read_unaligned() };
+fn parse_key(s: &[u8]) -> (Key, &[u8], &[u8]) {
+    if s.len() < 8 {
+        return parse_key_scalar(s);
+    }
 
-    // clean up garbage bytes. note that from_le should be a no-op for little-endian systems
-    let shift = 64_usize.saturating_sub(8 * s.len());
-    let leading = u64::from_le(leading_dirty) << shift;
+    let first_word = read_word(s, 0);
+    let mut matches = word_byte_matches(first_word, b';');
+    if matches != 0 {
+        return parsed_key(s, first_word, matches.trailing_zeros() as usize / 8);
+    }
 
-    leading ^ (s.len() as u64)
+    let mut offset = 8;
+    while offset + 8 <= s.len() {
+        matches = word_byte_matches(read_word(s, offset), b';');
+        if matches != 0 {
+            return parsed_key(
+                s,
+                first_word,
+                offset + matches.trailing_zeros() as usize / 8,
+            );
+        }
+        offset += 8;
+    }
+
+    let mut len = offset;
+    loop {
+        if unsafe { *s.get_unchecked(len) } == b';' {
+            return parsed_key(s, first_word, len);
+        }
+        len += 1;
+    }
+}
+
+fn parse_key_scalar(s: &[u8]) -> (Key, &[u8], &[u8]) {
+    let mut leading = 0_u64;
+    let mut len = 0;
+
+    loop {
+        let byte = unsafe { *s.get_unchecked(len) };
+        if byte == b';' {
+            break;
+        }
+        if len < 8 {
+            leading |= (byte as u64) << (8 * len);
+        }
+        len += 1;
+    }
+
+    parsed_key(s, leading, len)
+}
+
+fn parsed_key(s: &[u8], first_word: u64, len: usize) -> (Key, &[u8], &[u8]) {
+    let shift = 64_usize.saturating_sub(8 * len);
+    let key = (first_word << shift) ^ (len as u64);
+    let key_bytes = unsafe { s.get_unchecked(..len) };
+    let rest = unsafe { s.get_unchecked(len + 1..) };
+
+    (key, key_bytes, rest)
+}
+
+fn read_word(s: &[u8], offset: usize) -> u64 {
+    unsafe { u64::from_le(s.as_ptr().add(offset).cast::<u64>().read_unaligned()) }
+}
+
+fn word_byte_matches(word: u64, byte: u8) -> u64 {
+    let repeated = u64::from_le_bytes([byte; 8]);
+    let diff = word ^ repeated;
+
+    (diff.wrapping_sub(0x0101_0101_0101_0101) & !diff) & 0x8080_8080_8080_8080
 }
 
 fn parse_value(s: &[u8]) -> (Value, &[u8]) {
